@@ -29,6 +29,7 @@ private:
     bool flag_after_value{false};
     uint64_t opened_mask{};
     void reset();
+    bool after_colon{false};
     
     bool just_opened() {
         return (opened_mask >> (depth - 1)) & 1;

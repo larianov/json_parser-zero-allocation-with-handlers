@@ -11,7 +11,7 @@ void Parser::push(bool type){
         key_mask|=(1ull<<depth);
     } 
     opened_mask|=(1ull<<depth);
-    
+    after_colon = false;
     depth++;
 }
 
@@ -32,6 +32,7 @@ void Parser::reset(){
     opened_mask = 0;
     flag_after_value = false;
     depth = 0;
+    after_colon = false;
 }
 
 
@@ -47,9 +48,10 @@ std::expected<void, Parse_Error> Parser::parse(){
         //           << "\n";
         switch (token.type_) {
             case TOKEN_LEFT_BRACE:
-                if(depth >= 64){
-                    return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_TOO_DEEP, "On 64 level of deep recursion with { you came too deep", token.offset_});
+                if(depth >= 63){
+                    return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_TOO_DEEP, "On 63 level of deep recursion with { you came too deep", token.offset_});
                 }
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});                
                 push(true);
                 flag_after_value = false;
                 handler.on_object_start();
@@ -64,7 +66,8 @@ std::expected<void, Parse_Error> Parser::parse(){
                 handler.on_object_end();
                 break;
             case TOKEN_LEFT_BRACKET:
-                if(depth>=64) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_TOO_DEEP, "On 64 level of deep recursion with [ you came too deep", token.offset_});
+                if(depth>=63) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_TOO_DEEP, "On 63 level of deep recursion with [ you came too deep", token.offset_});
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
                 push(false);
                 flag_after_value = false;
                 handler.on_array_start();
@@ -79,6 +82,8 @@ std::expected<void, Parse_Error> Parser::parse(){
                 handler.on_array_end();
                 break;
             case TOKEN_STRING:
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
+                if(depth == 0 && flag_after_value == true) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Two values without comma", token.offset_});
                 if(waiting_key()){
                     flag_after_value = false;
                     opened_mask &= ~(1ULL << (depth-1));
@@ -90,33 +95,49 @@ std::expected<void, Parse_Error> Parser::parse(){
                     opened_mask &= ~(1ULL << (depth-1));
                     handler.on_string(token.payload_);
                 }
+                after_colon = false;
                 break;
             case TOKEN_NUMBER:
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
+                if(depth == 0 && flag_after_value == true) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Two values without comma", token.offset_});
                 flag_after_value = true;
                 opened_mask &= ~(1ULL << (depth-1));
                 handler.on_number(token.payload_);
+                after_colon = false;
                 break;
             case TOKEN_TRUE:
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
+                if(depth == 0 && flag_after_value == true) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Two values without comma", token.offset_});
                 flag_after_value = true;
                 opened_mask &= ~(1ULL << (depth-1));
                 handler.on_bool(true);
+                after_colon = false;
                 break;
             case TOKEN_FALSE:
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
+                if(depth == 0 && flag_after_value == true) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Two values without comma", token.offset_});
                 flag_after_value = true;
                 opened_mask &= ~(1ULL << (depth-1));
                 handler.on_bool(false);
+                after_colon = false;
                 break;
             case TOKEN_NULL:
+                if(depth > 0 && in_object() && !waiting_key() && !after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Expected colon after key", token.offset_});
+                if(depth == 0 && flag_after_value == true) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Two values without comma", token.offset_});
                 flag_after_value = true;
                 opened_mask &= ~(1ULL << (depth-1));
                 handler.on_null();
+                after_colon = false;
                 break;
             case TOKEN_COLON:
                 if(!in_object()) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Meet colon not being in object", token.offset_});
                 if(waiting_key()) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Meet colon without key", token.offset_});
                 if(flag_after_value)return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Meet colon after value", token.offset_});
+                if(after_colon) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Double colon", token.offset_});
+                after_colon = true;
                 break;
             case TOKEN_COMMA:
+                if(depth == 0) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Comma at top level", token.offset_});
                 if(!flag_after_value) return std::unexpected<Parse_Error>(Parse_Error{PARSE_ERROR_UNEXPECTED_TOKEN, "Meet comma not after value", token.offset_});
                 flag_after_value = false;
                 opened_mask &= ~(1ULL << (depth-1));
