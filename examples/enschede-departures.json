@@ -1,0 +1,24 @@
+{
+  "board": {
+    "station": "Enschede",
+    "date": "2026-12-15",
+    "period": "morning",
+    "data_kind": "synthetic example, not a verified timetable",
+    "departures": {
+      "hengelo": {
+        "destination": "Hengelo",
+        "departure": "07:40",
+        "cancelled": false
+      },
+      "dortmund": {
+        "destination": "Dortmund Hbf",
+        "service": "RB51",
+        "departure": "07:56",
+        "arrival": "10:06",
+        "delay_minutes": 0,
+        "platform": null,
+        "cancelled": false
+      }
+    }
+  }
+}
